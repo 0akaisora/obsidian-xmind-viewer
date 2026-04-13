@@ -838,10 +838,8 @@ class XMindView extends FileView {
 
     wrap.addEventListener("keydown",e=>{
       if(e.target.tagName==="TEXTAREA"){
-        // 编辑中：Tab/Enter 先提交编辑，再执行添加动作
         if(e.key==="Tab"){e.preventDefault();this.renderer._commitEdit();this._addChild();return;}
-        if(e.key==="Enter"&&!e.altKey){e.preventDefault();this.renderer._commitEdit();this._addSibling();return;}
-        // 其余按键（Backspace、Alt+Enter、Escape、普通输入）交给 textarea 自行处理
+        if(e.key==="Enter"&&!e.altKey){e.preventDefault();this.renderer._commitEdit();wrap.focus();return;}
         return;
       }
       if(e.key==="Tab"){e.preventDefault();this._addChild();}
