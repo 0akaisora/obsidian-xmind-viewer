@@ -522,7 +522,7 @@ var rpx = (n) => n._lx + (n._dx || 0);
 var rpy = (n) => n._ly + (n._dy || 0);
 
 // src/renderer/renderer.js
-var DROP_RADIUS = 120;
+var DROP_RADIUS = 10;
 var XMindRenderer = class {
   constructor(wrap, cbs) {
     this.wrap = wrap;

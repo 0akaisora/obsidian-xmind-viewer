@@ -7,7 +7,7 @@ import { se } from "../utils/svg.js";
 import { PAL } from "../layout/constants.js";
 import { doLayout, rpx, rpy } from "../layout/layout.js";
 
-const DROP_RADIUS = 120; // 拖拽挂载检测半径 (canvas px)
+const DROP_RADIUS = 10; // 拖拽挂载检测半径：边缘距离 (canvas px)
 
 export class XMindRenderer {
   constructor(wrap, cbs) {
