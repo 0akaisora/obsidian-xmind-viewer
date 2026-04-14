@@ -7,7 +7,7 @@ import { se } from "../utils/svg.js";
 import { PAL } from "../layout/constants.js";
 import { doLayout, rpx, rpy } from "../layout/layout.js";
 
-const DROP_RADIUS = 50; // 拖拽挂载检测半径 (canvas px)
+const DROP_RADIUS = 120; // 拖拽挂载检测半径 (canvas px)
 
 export class XMindRenderer {
   constructor(wrap, cbs) {
@@ -428,18 +428,27 @@ export class XMindRenderer {
         origins.forEach(({ nd, odx, ody }) => { nd._dx = odx + dx; nd._dy = ody + dy; });
         this._redraw();
 
-        // drop target 检测：找最近的非拖拽节点
-        const svgR = this._svg.getBoundingClientRect();
-        const mouseCanvasX = (ev.clientX - svgR.left - this._pan.x) / this._sc;
-        const mouseCanvasY = (ev.clientY - svgR.top - this._pan.y) / this._sc;
+        // drop target 检测：计算被拖节点群到候选节点的边缘最短距离
+        // 先算出拖拽群的包围盒
+        let dMinX = Infinity, dMinY = Infinity, dMaxX = -Infinity, dMaxY = -Infinity;
+        for (const t of targets) {
+          const tx = rpx(t), ty = rpy(t);
+          if (tx < dMinX) dMinX = tx;
+          if (ty < dMinY) dMinY = ty;
+          if (tx + t._w > dMaxX) dMaxX = tx + t._w;
+          if (ty + t._h > dMaxY) dMaxY = ty + t._h;
+        }
 
         let bestDist = DROP_RADIUS;
         dropTarget = null;
         for (const cand of this._allNodes()) {
           if (dragDescIds.has(cand.id)) continue;
-          const cx = rpx(cand) + cand._w / 2;
-          const cy = rpy(cand) + cand._h / 2;
-          const dist = Math.hypot(mouseCanvasX - cx, mouseCanvasY - cy);
+          const cx0 = rpx(cand), cy0 = rpy(cand);
+          const cx1 = cx0 + cand._w, cy1 = cy0 + cand._h;
+          // 两个矩形之间的最短距离
+          const gx = Math.max(0, Math.max(dMinX - cx1, cx0 - dMaxX));
+          const gy = Math.max(0, Math.max(dMinY - cy1, cy0 - dMaxY));
+          const dist = Math.hypot(gx, gy);
           if (dist < bestDist) { bestDist = dist; dropTarget = cand; }
         }
 
