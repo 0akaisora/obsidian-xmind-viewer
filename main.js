@@ -324,7 +324,11 @@ class XMindRenderer {
     this.onSelect=cbs.onSelect;this.onDblClick=cbs.onDblClick;this.onDragEnd=cbs.onDragEnd;
     this._pan={x:0,y:0};this._sc=1;
     this._svg=null;this._g=null;this._eg=null;this._ng=null;this._root=null;
-    this._nodeEls=new Map(); // node.id → <g> element
+    this._nodeEls=new Map();  // node.id → <g> element
+    this._nodeData=new Map(); // node.id → node data object
+    this._selSet=new Set();   // 多选节点 id 集合
+    this._spaceDown=false;
+    this._marqueeEl=null;
   }
 
   render(mm){
@@ -345,7 +349,7 @@ class XMindRenderer {
 
   _buildSVG(){
     const svg=se("svg");
-    svg.style.cssText="width:100%;height:100%;display:block;cursor:grab;";
+    svg.style.cssText="width:100%;height:100%;display:block;cursor:default;";
     // 渐变 + 滤镜定义
     const defs=se("defs");
     defs.innerHTML=`
@@ -372,14 +376,53 @@ class XMindRenderer {
     this._svg=svg;this._g=g;
     this._eg=se("g");this._ng=se("g");g.appendChild(this._eg);g.appendChild(this._ng);
 
-    // 平移
+    // 框选矩形（直接在 SVG 坐标系，不随画布变换）
+    this._marqueeEl=se("rect",{fill:"rgba(99,102,241,0.08)",stroke:"#6366F1","stroke-width":"1","stroke-dasharray":"4 3",rx:"2"});
+    this._marqueeEl.style.cssText="display:none;pointer-events:none;";
+    svg.appendChild(this._marqueeEl);
+
+    // 背景交互：空格+拖拽=平移，默认拖拽=框选
     svg.addEventListener("mousedown",e=>{
       if(e.button!==0||e.target.closest(".xm-node"))return;
       this._commitEdit();e.preventDefault();
-      const ox=this._pan.x,oy=this._pan.y,sx=e.clientX,sy=e.clientY;
-      const mv=ev=>{this._pan.x=ox+(ev.clientX-sx);this._pan.y=oy+(ev.clientY-sy);this._tf();};
-      const up=()=>{window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);svg.style.cursor="grab";};
-      window.addEventListener("mousemove",mv);window.addEventListener("mouseup",up);svg.style.cursor="grabbing";
+      if(this._spaceDown){
+        // ── 平移 ──
+        const ox=this._pan.x,oy=this._pan.y,sx=e.clientX,sy=e.clientY;
+        const mv=ev=>{this._pan.x=ox+(ev.clientX-sx);this._pan.y=oy+(ev.clientY-sy);this._tf();};
+        const up=()=>{window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);svg.style.cursor="grab";};
+        window.addEventListener("mousemove",mv);window.addEventListener("mouseup",up);svg.style.cursor="grabbing";
+      }else{
+        // ── 框选 ──
+        const svgR=svg.getBoundingClientRect();
+        const x0=e.clientX-svgR.left,y0=e.clientY-svgR.top;
+        let x1=x0,y1=y0;
+        const prev=this.selected;
+        this._clearSelSet();this.selected=null;this._applySel(prev,null);this.onSelect?.(null);
+        const mv=ev=>{
+          x1=ev.clientX-svgR.left;y1=ev.clientY-svgR.top;
+          const rx=Math.min(x0,x1),ry=Math.min(y0,y1);
+          this._marqueeEl.setAttribute("x",rx);this._marqueeEl.setAttribute("y",ry);
+          this._marqueeEl.setAttribute("width",Math.abs(x1-x0));this._marqueeEl.setAttribute("height",Math.abs(y1-y0));
+          this._marqueeEl.style.display="block";
+        };
+        const up=()=>{
+          window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);
+          this._marqueeEl.style.display="none";
+          const w=Math.abs(x1-x0),h=Math.abs(y1-y0);
+          if(w>4&&h>4){
+            // 将框选区域转换为画布坐标空间进行命中测试
+            const cx0=(Math.min(x0,x1)-this._pan.x)/this._sc;
+            const cy0=(Math.min(y0,y1)-this._pan.y)/this._sc;
+            const cx1=(Math.max(x0,x1)-this._pan.x)/this._sc;
+            const cy1=(Math.max(y0,y1)-this._pan.y)/this._sc;
+            const hits=this._allNodes()
+              .filter(n=>rpx(n)<cx1&&rpx(n)+n._w>cx0&&rpy(n)<cy1&&rpy(n)+n._h>cy0)
+              .map(n=>n.id);
+            if(hits.length)this._setSelSet(hits);
+          }
+        };
+        window.addEventListener("mousemove",mv);window.addEventListener("mouseup",up);
+      }
     });
     // 缩放
     svg.addEventListener("wheel",e=>{
@@ -389,17 +432,13 @@ class XMindRenderer {
       this._pan.x=mx-(mx-this._pan.x)*(ns/this._sc);this._pan.y=my-(my-this._pan.y)*(ns/this._sc);
       this._sc=ns;this._tf();
     },{passive:false});
-    // 空白取消选中（就地更新，不重建 DOM）
-    svg.addEventListener("click",e=>{
-      if(!e.target.closest(".xm-node")){const prev=this.selected;this.selected=null;this._applySel(prev,null);this.onSelect?.(null);}
-    });
     this.wrap.appendChild(svg);
   }
 
   _redraw(){
     if(!this._root)return;
     this._eg.innerHTML="";this._ng.innerHTML="";
-    this._nodeEls.clear();
+    this._nodeEls.clear();this._nodeData.clear();
     this._drawEdges(this._eg,this._root);
     this._drawNodes(this._ng,this._root);
   }
@@ -421,10 +460,46 @@ class XMindRenderer {
       :"drop-shadow(0 1px 3px rgba(0,0,0,0.06))";
   }
 
-  // 就地切换选中高亮，不重建 DOM
+  // 就地切换选中高亮（单选），跳过仍在多选集里的节点
   _applySel(prev,next){
-    if(prev){const el=this._nodeEls.get(prev.id);if(el)el.style.filter=this._filterFor(prev,false);}
+    if(prev&&!this._selSet.has(prev.id)){const el=this._nodeEls.get(prev.id);if(el)el.style.filter=this._filterFor(prev,false);}
     if(next){const el=this._nodeEls.get(next.id);if(el)el.style.filter=this._filterFor(next,true);}
+  }
+
+  // 清空多选高亮
+  _clearSelSet(){
+    this._selSet.forEach(id=>{
+      const n=this._nodeData.get(id);const el=this._nodeEls.get(id);
+      if(n&&el)el.style.filter=this._filterFor(n,this.selected?.id===id);
+    });
+    this._selSet.clear();
+  }
+
+  // 设置多选集合并高亮
+  _setSelSet(ids){
+    this._clearSelSet();
+    ids.forEach(id=>{
+      this._selSet.add(id);
+      const n=this._nodeData.get(id);const el=this._nodeEls.get(id);
+      if(n&&el)el.style.filter=this._filterFor(n,true);
+    });
+  }
+
+  // 收集所有可见节点
+  _allNodes(){
+    const r=[];const walk=n=>{r.push(n);if(!n.collapsed)n.children.forEach(walk);};
+    if(this._root)walk(this._root);return r;
+  }
+
+  // 收集多选集合对应的 node 对象列表
+  _selSetNodes(){
+    return this._allNodes().filter(n=>this._selSet.has(n.id));
+  }
+
+  // 设置空格键状态并更新光标
+  setSpaceDown(down){
+    this._spaceDown=down;
+    if(this._svg)this._svg.style.cursor=down?"grab":"default";
   }
 
   // ── 连线：细腻贝塞尔，带颜色渐变感 ──
@@ -455,7 +530,8 @@ class XMindRenderer {
   // ── 节点：现代分层设计 ──
   _oneNode(g,n){
     const{_w:w,_h:h,_rx:rx,_lines:lines,_sp:sp,_l:l,_bi:bi}=n;
-    const x=rpx(n),y=rpy(n),pal=PAL[bi%PAL.length],isSel=this.selected?.id===n.id;
+    const x=rpx(n),y=rpy(n),pal=PAL[bi%PAL.length];
+    const isSel=this.selected?.id===n.id||this._selSet.has(n.id);
     const ng=se("g");ng.setAttribute("class","xm-node");ng.style.cursor="grab";
 
     // ── 根节点：渐变胶囊 + 大光晕 ──
@@ -538,25 +614,33 @@ class XMindRenderer {
       ng.appendChild(btn);
     }
 
-    // ── 拖拽 ──
+    // ── 拖拽（多选时整体移动）──
     ng.addEventListener("mousedown",e=>{
       if(e.button!==0)return;e.stopPropagation();e.preventDefault();
-      const sx=e.clientX,sy=e.clientY,odx=n._dx||0,ody=n._dy||0;let moved=false;
+      const inMulti=this._selSet.size>1&&this._selSet.has(n.id);
+      const targets=inMulti?this._selSetNodes():[n];
+      const origins=targets.map(nd=>({nd,odx:nd._dx||0,ody:nd._dy||0}));
+      const sx=e.clientX,sy=e.clientY;let moved=false;
       const mv=ev=>{
         const dx=(ev.clientX-sx)/this._sc,dy=(ev.clientY-sy)/this._sc;
         if(!moved&&(Math.abs(dx)>4||Math.abs(dy)>4))moved=true;
-        if(moved){n._dx=odx+dx;n._dy=ody+dy;this._redraw();}
+        if(moved){origins.forEach(({nd,odx,ody})=>{nd._dx=odx+dx;nd._dy=ody+dy;});this._redraw();}
       };
       const up=()=>{
         window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);
         if(moved){this.onDragEnd?.(n);}
-        else{const prev=this.selected;this.selected=n;this._applySel(prev,n);this.onSelect?.(n);}
+        else{
+          // 单击节点：清空多选，单选此节点
+          this._clearSelSet();
+          const prev=this.selected;this.selected=n;this._applySel(prev,n);this.onSelect?.(n);
+        }
       };
       window.addEventListener("mousemove",mv);window.addEventListener("mouseup",up);
     });
     // ── 双击（DOM 不被销毁，原生事件正常触发）──
     ng.addEventListener("dblclick",e=>{e.stopPropagation();this.selected=n;this.onDblClick?.(n);});
     this._nodeEls.set(n.id,ng);
+    this._nodeData.set(n.id,n);
     g.appendChild(ng);
   }
 
@@ -837,6 +921,7 @@ class XMindView extends FileView {
     this.renderer.render(this.mm);
 
     wrap.addEventListener("keydown",e=>{
+      if(e.key===" "&&e.target.tagName!=="TEXTAREA"){e.preventDefault();this.renderer.setSpaceDown(true);return;}
       if(e.target.tagName==="TEXTAREA"){
         if(e.key==="Tab"){e.preventDefault();this.renderer._commitEdit();this._addChild();return;}
         if(e.key==="Enter"&&!e.altKey){e.preventDefault();this.renderer._commitEdit();wrap.focus();return;}
@@ -846,6 +931,9 @@ class XMindView extends FileView {
       if(e.key==="Enter"){e.preventDefault();this._addSibling();}
       if(e.key==="Delete"){e.preventDefault();this._deleteSel();}
       if(e.key==="F2"){e.preventDefault();this._editSel();}
+    });
+    wrap.addEventListener("keyup",e=>{
+      if(e.key===" ")this.renderer.setSpaceDown(false);
     });
     wrap.focus();
   }
@@ -881,9 +969,15 @@ class XMindView extends FileView {
     this.renderer.selected=n;this._sel=n;this.renderer._applySel(null,n);this._editSel();
   }
   _deleteSel(){
-    if(!this._sel){new Notice("请先选择要删除的节点");return;}
-    if(!this.editor.del(this._sel.id)){new Notice("根节点无法删除");return;}
-    this._sel=null;this.renderer.selected=null;
+    const ids=[...this.renderer._selSet];
+    if(!ids.length&&!this._sel){new Notice("请先选择要删除的节点");return;}
+    if(!ids.length&&this._sel)ids.push(this._sel.id);
+    const root=this.mm.sheets[this.mm.currentIndex].root;
+    const toDelete=ids.filter(id=>id!==root.id);
+    if(toDelete.length<ids.length)new Notice("根节点无法删除");
+    if(!toDelete.length)return;
+    toDelete.forEach(id=>this.editor.del(id));
+    this.renderer._clearSelSet();this._sel=null;this.renderer.selected=null;
   }
   _editSel(){
     if(!this._sel)return;
