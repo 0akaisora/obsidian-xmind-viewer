@@ -1,3 +1,127 @@
-.obsidian{
-
+.xm-toolbar {
+  display: flex;
+  align-items: center;
+  height: 46px;
+  padding: 0 16px;
+  gap: 2px;
+  flex-shrink: 0;
+  background: #FFFFFF;
+  border-bottom: 1px solid #E5E7EB;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+}
+.xm-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6366F1;
+  margin-right: 8px;
+  user-select: none;
+  white-space: nowrap;
+}
+.xm-brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #818CF8, #4F46E5);
+  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.5);
+  flex-shrink: 0;
+}
+.xm-sep {
+  width: 1px;
+  height: 18px;
+  background: #E5E7EB;
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+.xm-tabs {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.xm-tab {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  background: transparent;
+  color: #6B7280;
+  transition: background .12s, color .12s;
+  white-space: nowrap;
+}
+.xm-tab:hover {
+  background: #F3F4F6;
+  color: #374151;
+}
+.xm-tab.active {
+  background: #EEF2FF;
+  color: #6366F1;
+  font-weight: 600;
+}
+.xm-spacer {
+  flex: 1;
+}
+.xm-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  color: #4B5563;
+  transition: background .12s, color .12s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.xm-btn:hover {
+  background: #F3F4F6;
+  color: #111827;
+}
+.xm-btn.danger:hover {
+  background: #FEF2F2;
+  color: #DC2626;
+}
+.xm-btn.outlined {
+  border: 1px solid #E5E7EB;
+}
+.xm-btn.primary {
+  background: #6366F1;
+  color: #FFFFFF;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.3);
+}
+.xm-btn.primary:hover {
+  background: #4F46E5;
+}
+.xm-dirty {
+  font-size: 11px;
+  color: #F59E0B;
+  margin-left: 4px;
+  user-select: none;
+}
+.xm-statusbar {
+  height: 26px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #F9FAFB;
+  border-bottom: 1px solid #F3F4F6;
+  flex-shrink: 0;
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  color: #9CA3AF;
+}
+.xm-statusbar .xm-node-info {
+  margin-left: auto;
+  color: #6366F1;
+  font-weight: 500;
 }
