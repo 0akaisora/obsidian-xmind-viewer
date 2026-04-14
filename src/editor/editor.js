@@ -67,7 +67,18 @@ export class XMindEditor {
       if (node && this._find(node, newParentId)) return false;
     }
 
-    for (const id of ids) {
+    // 过滤出最顶层节点：如果某节点的祖先已在选中集里，则跳过它（保持原父子关系）
+    const idSet = new Set(ids);
+    const topIds = ids.filter(id => {
+      let cur = this._par(sh.root, id);
+      while (cur) {
+        if (idSet.has(cur.id)) return false; // 祖先在选中集里，跳过
+        cur = this._par(sh.root, cur.id);
+      }
+      return true;
+    });
+
+    for (const id of topIds) {
       const oldParent = this._par(sh.root, id);
       if (!oldParent) continue;
       const node = oldParent.children.find(c => c.id === id);

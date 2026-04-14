@@ -402,7 +402,16 @@ var XMindEditor = class {
       const node = this._find(sh.root, id);
       if (node && this._find(node, newParentId)) return false;
     }
-    for (const id of ids) {
+    const idSet = new Set(ids);
+    const topIds = ids.filter((id) => {
+      let cur = this._par(sh.root, id);
+      while (cur) {
+        if (idSet.has(cur.id)) return false;
+        cur = this._par(sh.root, cur.id);
+      }
+      return true;
+    });
+    for (const id of topIds) {
       const oldParent = this._par(sh.root, id);
       if (!oldParent) continue;
       const node = oldParent.children.find((c) => c.id === id);
